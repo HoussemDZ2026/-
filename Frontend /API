@@ -1,0 +1,49 @@
+from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel
+from main import FutureSetApp
+import os
+from dotenv import load_dotenv
+
+# تحميل الإعدادات
+load_dotenv()
+
+# إنشاء التطبيق
+app = FastAPI(title="Future Set AI API")
+future_set_logic = FutureSetApp()
+
+# تعريف شكل البيانات التي يرسلها المستخدم (Schema)
+class UserRequest(BaseModel):
+    email: str
+    message: str
+
+# 1. الرابط الأساسي لاستقبال الطلبات (لربطه مع n8n)
+@app.post("/ask")
+async def ask_ai(request: UserRequest):
+    result = future_set_logic.run_app(request.email, request.message)
+    
+    if result["status"] == "success":
+        return {"response": result["data"]}
+    else:
+        # إذا كان هناك مشكلة في الاشتراك أو غيره
+        raise HTTPException(status_code=403, detail=result["message"])
+
+# 2. الرابط السري للمدير (Houssam) لتمديد الاشتراكات
+@app.get("/admin/extend")
+async def extend_subscription(
+    admin_pass: str = Query(...), 
+    email: str = Query(...), 
+    days: int = Query(...)
+):
+    # استخدام نظام الحماية لتمديد الاشتراك
+    auth_manager = future_set_logic.auth
+    response = auth_manager.extend_subscription(admin_pass, email, days)
+    
+    if "تم تمديد" in response:
+        return {"status": "ok", "message": response}
+    else:
+        raise HTTPException(status_code=401, detail=response)
+
+# 3. رابط فحص حالة السيرفر
+@app.get("/")
+async def health_check():
+    return {"status": "online", "platform": "Future Set"}
